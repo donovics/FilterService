@@ -71,8 +71,7 @@ public class OutputService {
                 | Metric              | Count  |
                 |---------------------|--------|
                 | Received            | %6d |
-                | Exact duplicates    | %6d |
-                | Near-duplicates     | %6d |
+                | Duplicates          | %6d |
                 | Bot traffic         | %6d |
                 | **Shipped**         | **%d** |
 
@@ -103,27 +102,33 @@ public class OutputService {
 
                 ## Bot-Detection Logic
 
-                Four independent signals are evaluated; a single positive is enough to reject
-                an event. Bot events are counted but never forwarded or added to the
+                Five independent signals are evaluated; any single positive rejects the event.
+                Bot events are counted but never forwarded and never recorded in the
                 deduplication caches.
 
-                1. **Missing / blank user-agent** — a browser always sends a UA string.
-                   Events without one are not produced by real browsers.
+                1. **Missing / blank user-agent** — every real browser sends a non-empty UA
+                   string.  Events without one cannot originate from a real browser.
 
-                2. **User-agent pattern matching** — the UA string is tested against compiled
-                   regex patterns covering generic automation keywords (`bot`, `crawler`,
-                   `spider`, `scraper`, `slurp`), common HTTP libraries (`curl`, `wget`,
-                   `python-requests`, `okhttp`, `go-http-client`, …), named crawlers
-                   (Googlebot, Bingbot, AhrefsBot, SemrushBot, …), and headless / automation
-                   frameworks (HeadlessChrome, PhantomJS, Selenium, Puppeteer, Playwright, …).
+                2. **User-agent keyword patterns** — the UA is tested against compiled regexes
+                   covering: generic automation keywords (`bot`, `crawler`, `spider`, `scraper`,
+                   `slurp`, `probe`, `scan`); common HTTP libraries (`curl`, `wget`,
+                   `python-requests`, `httpx`, `aiohttp`, `scrapy`, `okhttp`, `go-http-client`,
+                   `mechanize`, `urllib3`, …); named crawlers (Googlebot, Bingbot, AhrefsBot,
+                   SemrushBot, Twitterbot, …); and headless / automation frameworks
+                   (HeadlessChrome, PhantomJS, Selenium, Puppeteer, Playwright, Cypress, …).
 
-                3. **IP event-rate limit** — a per-IP counter resets every 60 seconds via a
-                   Caffeine expiry. Any IP that exceeds **%d events per minute** is flagged.
-                   Real users do not generate that volume from a single address.
+                3. **Timestamp presence and parseability** — both `client_timestamp` and
+                   `received_at` must be present and parse as valid ISO-8601 instants.
+                   Events with missing or malformed timestamp fields are rejected, as real
+                   collectors always produce well-formed timestamps.
 
-                4. **Cookie event-rate limit** — a per-cookie counter resets every 10 seconds.
-                   Any cookie that exceeds **%d events per 10 seconds** is flagged.
-                   That rate is faster than any human interaction pattern.
+                4. **IP event-rate limit** — a per-IP counter resets every 60 seconds. Any IP
+                   that exceeds **%d events per minute** is flagged; no real end-user generates
+                   that volume from a single device.
+
+                5. **Cookie event-rate limit** — a per-cookie counter resets every 10 seconds.
+                   Any cookie that exceeds **%d events per 10 seconds** is flagged; that pace
+                   is faster than any human interaction.
 
                 ---
 
@@ -131,13 +136,12 @@ public class OutputService {
                 """,
                 Instant.now(),
                 s.getReceived(),
-                s.getExactDups(),
-                s.getNearDups(),
+                s.getExactDups() + s.getNearDups(),
                 s.getBots(),
                 s.getShipped(),
                 shipRate,
-                120,   // MAX_EVENTS_PER_IP_PER_MINUTE
-                30,    // MAX_EVENTS_PER_COOKIE_PER_10S
+                90,    // MAX_EVENTS_PER_IP_PER_MINUTE
+                20,    // MAX_EVENTS_PER_COOKIE_PER_10S
                 totalFiltered,
                 s.getReceived()
         );

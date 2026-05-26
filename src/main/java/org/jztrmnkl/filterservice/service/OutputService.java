@@ -6,6 +6,7 @@ import org.jztrmnkl.filterservice.model.Event;
 import org.jztrmnkl.filterservice.model.ProcessingStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -19,30 +20,34 @@ public class OutputService {
 
     private static final Logger log = LoggerFactory.getLogger(OutputService.class);
 
-    private static final Path OUTPUT_DIR          = Path.of("output");
-    private static final Path SHIPPED_EVENTS_FILE = OUTPUT_DIR.resolve("shipped_events.ndjson");
-    private static final Path SUMMARY_FILE        = OUTPUT_DIR.resolve("summary.md");
+    private final Path outputDir;
+    private final Path shippedEventsFile;
+    private final Path summaryFile;
 
     private final ObjectMapper objectMapper;
 
-    public OutputService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public OutputService(ObjectMapper objectMapper,
+                         @Value("${app.output-dir:output}") String outputDir) {
+        this.objectMapper      = objectMapper;
+        this.outputDir         = Path.of(outputDir);
+        this.shippedEventsFile = this.outputDir.resolve("shipped_events.ndjson");
+        this.summaryFile       = this.outputDir.resolve("summary.md");
     }
 
     @PostConstruct
     public void init() throws IOException {
-        Files.createDirectories(OUTPUT_DIR);
-        if (!Files.exists(SHIPPED_EVENTS_FILE)) {
-            Files.createFile(SHIPPED_EVENTS_FILE);
+        Files.createDirectories(outputDir);
+        if (!Files.exists(shippedEventsFile)) {
+            Files.createFile(shippedEventsFile);
         }
         updateSummary(new ProcessingStats());
-        log.info("Output directory ready at {}", OUTPUT_DIR.toAbsolutePath());
+        log.info("Output directory ready at {}", outputDir.toAbsolutePath());
     }
 
     public synchronized void appendShippedEvent(Event event) {
         try {
             String line = objectMapper.writeValueAsString(event) + "\n";
-            Files.writeString(SHIPPED_EVENTS_FILE, line, StandardOpenOption.APPEND);
+            Files.writeString(shippedEventsFile, line, StandardOpenOption.APPEND);
         } catch (IOException e) {
             log.error("Failed to write shipped event", e);
         }
@@ -50,7 +55,7 @@ public class OutputService {
 
     public synchronized void updateSummary(ProcessingStats stats) {
         try {
-            Files.writeString(SUMMARY_FILE, buildSummary(stats));
+            Files.writeString(summaryFile, buildSummary(stats));
         } catch (IOException e) {
             log.error("Failed to update summary", e);
         }
@@ -102,7 +107,7 @@ public class OutputService {
 
                 ## Bot-Detection Logic
 
-                Five independent signals are evaluated; any single positive rejects the event.
+                Six independent signals are evaluated; any single positive rejects the event.
                 Bot events are counted but never forwarded and never recorded in the
                 deduplication caches.
 
@@ -129,6 +134,11 @@ public class OutputService {
                 5. **Cookie event-rate limit** — a per-cookie counter resets every 10 seconds.
                    Any cookie that exceeds **%d events per 10 seconds** is flagged; that pace
                    is faster than any human interaction.
+
+                6. **Invalid event type** — `event_type` must be one of the three values
+                   defined in the schema: `view`, `visible`, or `click`.  Any other value
+                   (including null or blank) indicates a forged or synthetic event, because
+                   real browser collectors never produce any other event type.
 
                 ---
 

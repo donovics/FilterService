@@ -8,25 +8,30 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
- * Bot detection — five independent signals; any single positive rejects the event.
+ * Bot detection — six independent signals; any single positive rejects the event.
  *
  *  1. Null / blank user-agent string.
  *  2. User-agent matches a compiled list of bot / automation UA patterns.
  *  3. Timestamp anomaly: either timestamp field is missing or unparseable.
  *  4. IP event rate exceeds 90 events per 60-second window.
  *  5. Cookie event rate exceeds 20 events per 10-second window.
+ *  6. event_type is not one of the three schema-defined values (view / visible / click).
  */
 @Service
 public class BotDetectionService {
 
     // --- thresholds ---------------------------------------------------------
-    private static final int MAX_EVENTS_PER_IP_PER_MINUTE  = 90;
-    private static final int MAX_EVENTS_PER_COOKIE_PER_10S = 20;
+    private static final int MAX_EVENTS_PER_IP_PER_MINUTE     = 90;
+    private static final int MAX_EVENTS_PER_COOKIE_PER_10S    = 20;
+
+    // --- schema constraints -------------------------------------------------
+    private static final Set<String> ALLOWED_EVENT_TYPES = Set.of("view", "visible", "click");
 
     // --- UA pattern lists ---------------------------------------------------
     private static final List<Pattern> BOT_UA_PATTERNS = List.of(
@@ -52,7 +57,6 @@ public class BotDetectionService {
     private final Cache<String, AtomicInteger> ipRateCache = Caffeine.newBuilder()
             .expireAfterWrite(60, TimeUnit.SECONDS)
             .build();
-
     private final Cache<String, AtomicInteger> cookieRateCache = Caffeine.newBuilder()
             .expireAfterWrite(10, TimeUnit.SECONDS)
             .build();
@@ -61,11 +65,12 @@ public class BotDetectionService {
 
     public boolean isBot(Event event) {
         String ua = event.getUserAgent();
-        if (isMissingOrBlankUserAgent(ua))            return true;
-        if (matchesBotUaPattern(ua))                  return true;
-        if (hasAnomalousTimestamp(event))             return true;
-        if (isIpRateTooHigh(event.getIp()))           return true;
+        if (isMissingOrBlankUserAgent(ua))  return true;
+        if (matchesBotUaPattern(ua))        return true;
+        if (hasAnomalousTimestamp(event))   return true;
+        if (isIpRateTooHigh(event.getIp()))         return true;
         if (isCookieRateTooHigh(event.getCookieId())) return true;
+        if (isInvalidEventType(event))               return true;
         return false;
     }
 
@@ -115,6 +120,16 @@ public class BotDetectionService {
         if (cookieId == null || cookieId.isBlank()) return false;
         AtomicInteger count = cookieRateCache.get(cookieId, k -> new AtomicInteger(0));
         return count.incrementAndGet() > MAX_EVENTS_PER_COOKIE_PER_10S;
+    }
+
+    /**
+     * Signal 6: event_type is not one of the three values defined in the schema.
+     * Real browser collectors only ever emit "view", "visible", or "click".
+     * Any other value indicates a forged or synthetic event.
+     */
+    private boolean isInvalidEventType(Event event) {
+        String type = event.getEventType();
+        return type == null || !ALLOWED_EVENT_TYPES.contains(type);
     }
 
 }

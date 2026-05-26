@@ -1,17 +1,17 @@
 # FilterService — Processing Summary
 
-_Last updated: 2026-05-25T22:25:59.525626200Z_
+_Last updated: 2026-05-26T00:09:55.271538600Z_
 
 ## Event Counts
 
 | Metric              | Count  |
 |---------------------|--------|
 | Received            |  10098 |
-| Duplicates          |   1410 |
-| Bot traffic         |   1041 |
-| **Shipped**         | **7647** |
+| Duplicates          |   1318 |
+| Bot traffic         |   1487 |
+| **Shipped**         | **7293** |
 
-Ship rate: 75,7% of received events forwarded to the downstream queue.
+Ship rate: 72,2% of received events forwarded to the downstream queue.
 
 ---
 
@@ -38,7 +38,7 @@ different timestamps and will both be accepted.
 
 ## Bot-Detection Logic
 
-Five independent signals are evaluated; any single positive rejects the event.
+Six independent signals are evaluated; any single positive rejects the event.
 Bot events are counted but never forwarded and never recorded in the
 deduplication caches.
 
@@ -66,6 +66,11 @@ deduplication caches.
    Any cookie that exceeds **20 events per 10 seconds** is flagged; that pace
    is faster than any human interaction.
 
+6. **Invalid event type** — `event_type` must be one of the three values
+   defined in the schema: `view`, `visible`, or `click`.  Any other value
+   (including null or blank) indicates a forged or synthetic event, because
+   real browser collectors never produce any other event type.
+
 ---
 
-_Total filtered (dups + bots): 2451 / 10098 received_
+_Total filtered (dups + bots): 2805 / 10098 received_

@@ -21,3 +21,5 @@ REFLECTION.md   # Description of experience.\
 
 Navigate to the project folder and start:
 java -jar target/FilterService-1.0-SNAPSHOT.jar
+
+To clean the output folder, the service has to be restarted.

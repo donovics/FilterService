@@ -1,18 +1,17 @@
 # FilterService — Processing Summary
 
-_Last updated: 2026-05-25T20:59:53.588895500Z_
+_Last updated: 2026-05-26T00:09:55.271538600Z_
 
 ## Event Counts
 
 | Metric              | Count  |
 |---------------------|--------|
 | Received            |  10098 |
-| Exact duplicates    |    540 |
-| Near-duplicates     |    899 |
-| Bot traffic         |    730 |
-| **Shipped**         | **7929** |
+| Duplicates          |   1318 |
+| Bot traffic         |   1487 |
+| **Shipped**         | **7293** |
 
-Ship rate: 78,5% of received events forwarded to the downstream queue.
+Ship rate: 72,2% of received events forwarded to the downstream queue.
 
 ---
 
@@ -39,28 +38,39 @@ different timestamps and will both be accepted.
 
 ## Bot-Detection Logic
 
-Four independent signals are evaluated; a single positive is enough to reject
-an event. Bot events are counted but never forwarded or added to the
+Six independent signals are evaluated; any single positive rejects the event.
+Bot events are counted but never forwarded and never recorded in the
 deduplication caches.
 
-1. **Missing / blank user-agent** — a browser always sends a UA string.
-   Events without one are not produced by real browsers.
+1. **Missing / blank user-agent** — every real browser sends a non-empty UA
+   string.  Events without one cannot originate from a real browser.
 
-2. **User-agent pattern matching** — the UA string is tested against compiled
-   regex patterns covering generic automation keywords (`bot`, `crawler`,
-   `spider`, `scraper`, `slurp`), common HTTP libraries (`curl`, `wget`,
-   `python-requests`, `okhttp`, `go-http-client`, …), named crawlers
-   (Googlebot, Bingbot, AhrefsBot, SemrushBot, …), and headless / automation
-   frameworks (HeadlessChrome, PhantomJS, Selenium, Puppeteer, Playwright, …).
+2. **User-agent keyword patterns** — the UA is tested against compiled regexes
+   covering: generic automation keywords (`bot`, `crawler`, `spider`, `scraper`,
+   `slurp`, `probe`, `scan`); common HTTP libraries (`curl`, `wget`,
+   `python-requests`, `httpx`, `aiohttp`, `scrapy`, `okhttp`, `go-http-client`,
+   `mechanize`, `urllib3`, …); named crawlers (Googlebot, Bingbot, AhrefsBot,
+   SemrushBot, Twitterbot, …); and headless / automation frameworks
+   (HeadlessChrome, PhantomJS, Selenium, Puppeteer, Playwright, Cypress, …).
 
-3. **IP event-rate limit** — a per-IP counter resets every 60 seconds via a
-   Caffeine expiry. Any IP that exceeds **120 events per minute** is flagged.
-   Real users do not generate that volume from a single address.
+3. **Timestamp presence and parseability** — both `client_timestamp` and
+   `received_at` must be present and parse as valid ISO-8601 instants.
+   Events with missing or malformed timestamp fields are rejected, as real
+   collectors always produce well-formed timestamps.
 
-4. **Cookie event-rate limit** — a per-cookie counter resets every 10 seconds.
-   Any cookie that exceeds **30 events per 10 seconds** is flagged.
-   That rate is faster than any human interaction pattern.
+4. **IP event-rate limit** — a per-IP counter resets every 60 seconds. Any IP
+   that exceeds **90 events per minute** is flagged; no real end-user generates
+   that volume from a single device.
+
+5. **Cookie event-rate limit** — a per-cookie counter resets every 10 seconds.
+   Any cookie that exceeds **20 events per 10 seconds** is flagged; that pace
+   is faster than any human interaction.
+
+6. **Invalid event type** — `event_type` must be one of the three values
+   defined in the schema: `view`, `visible`, or `click`.  Any other value
+   (including null or blank) indicates a forged or synthetic event, because
+   real browser collectors never produce any other event type.
 
 ---
 
-_Total filtered (dups + bots): 2169 / 10098 received_
+_Total filtered (dups + bots): 2805 / 10098 received_
